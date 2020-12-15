@@ -239,6 +239,8 @@ commands:
         command: |
           brew update && brew upgrade carthage
           brew install cmake ccache pkg-config glfw3 gh
+          brew list --versions  cmake ccache pkg-config glfw3 gh
+          gem list xcpretty jazzy
 
   trigger-metrics:
     steps:
