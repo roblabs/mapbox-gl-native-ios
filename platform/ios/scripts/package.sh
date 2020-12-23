@@ -12,6 +12,7 @@ LOG_PATH=build/xcodebuild-$(date +"%Y-%m-%d_%H%M%S").log
 
 BUILD_FOR_DEVICE=${BUILD_DEVICE:-true}
 BUILD_DOCS=${BUILD_DOCS:-true}
+MAKE_ZIP=${MAKE_ZIP:-true}
 SYMBOLS=${SYMBOLS:-YES}
 
 BUILDTYPE=${BUILDTYPE:-Debug}
@@ -47,7 +48,11 @@ IOS_SDK_VERSION=`xcrun --sdk ${SDK} --show-sdk-version`
 
 step "Configuring ${FORMAT} framework for ${SDK} ${IOS_SDK_VERSION} (symbols: ${SYMBOLS}, buildtype: ${BUILDTYPE}, include events:${INCLUDE_EVENTS_IN_PACKAGE})"
 
+echo "$(sw_vers -productName), $(sw_vers -productVersion), $(sw_vers -buildVersion)"
 xcodebuild -version
+echo "brew list --versions: "
+brew list --versions cmake ccache pkg-config glfw3
+echo "gem list: $(gem list | grep jazzy) for API docs. $(gem list | grep xcpretty) for prettifying CLI."
 
 rm -rf ${OUTPUT}
 if [[ ${BUILD_STATIC} == true ]]; then
@@ -59,36 +64,45 @@ fi
 
 step "Recording library version…"
 VERSION="${OUTPUT}"/version.txt
-echo -n "https://github.com/mapbox/mapbox-gl-native-ios/commit/" > ${VERSION}
+# Remove characters from end of string - https://stackoverflow.com/a/27658733
+REMOTE_ORIGIN_GIT=$(git remote get-url origin)
+REMOTE_ORIGIN_URL=${REMOTE_ORIGIN_GIT::${#REMOTE_ORIGIN_GIT}-4}
+REMOTE_ORIGIN_REPO=$(basename -s .git ${REMOTE_ORIGIN_GIT})
 HASH=`git log | head -1 | awk '{ print $2 }' | cut -c 1-10` && true
-echo -n "mapbox-gl-native-ios "
-echo ${HASH}
-echo ${HASH} >> ${VERSION}
+step "  ${REMOTE_ORIGIN_REPO} ${HASH}"
+REMOTE_ORIGIN_COMMIT_PATH="${REMOTE_ORIGIN_URL}/commit/${HASH}"
+echo ${REMOTE_ORIGIN_COMMIT_PATH}
+echo -n ${REMOTE_ORIGIN_COMMIT_PATH} > ${VERSION}
 
 PROJ_VERSION=$(git rev-list --count HEAD)
-SEM_VERSION=$( git describe --tags --match=ios-v*.*.* --abbrev=0 | sed 's/^ios-v//' )
+TAG_VERSION=$(git describe --tags --match=ios-v*.*.* --abbrev=0)
+SEM_VERSION=$( echo ${TAG_VERSION} | sed 's/^ios-v//' )
 SHORT_VERSION=${SEM_VERSION%-*}
+BUILD_VERSION=${SEM_VERSION}$PROJ_VERSION
 
-step "Building targets (build ${PROJ_VERSION}, version ${SEM_VERSION})"
+step "Building targets (SemVer ${BUILD_VERSION}, build ${PROJ_VERSION}, tag ${TAG_VERSION})"
 
 SCHEME='dynamic'
 if [[ ${BUILD_STATIC} == true ]]; then
     SCHEME='static'
 fi
 
-CI_XCCONFIG=''
+XCCONFIG=''
 if [[ ! -z "${CI:=}" ]]; then
     xcconfig='platform/darwin/ci.xcconfig'
     echo "CI environment, using ${xcconfig}"
-    CI_XCCONFIG="-xcconfig ./${xcconfig}"
+    XCCONFIG="-xcconfig ./${xcconfig}"
 fi
+
+mkdir -p build/ios
 
 step "Building ${FORMAT} framework for iOS Simulator using ${SCHEME} scheme"
 xcodebuild \
-    CURRENT_SEMANTIC_VERSION=${SEM_VERSION} \
+    CURRENT_SEMANTIC_VERSION=${BUILD_VERSION} \
     CURRENT_COMMIT_HASH=${HASH} \
+    PROJ_VERSION=${PROJ_VERSION} \
     ONLY_ACTIVE_ARCH=NO \
-    ${CI_XCCONFIG} \
+    ${XCCONFIG} \
     -derivedDataPath ${DERIVED_DATA} \
     -workspace ./platform/ios/ios.xcworkspace \
     -scheme ${SCHEME} \
@@ -99,10 +113,11 @@ xcodebuild \
 if [[ ${BUILD_FOR_DEVICE} == true ]]; then
     step "Building ${FORMAT} framework for iOS devices using ${SCHEME} scheme"
     xcodebuild \
-        CURRENT_SEMANTIC_VERSION=${SEM_VERSION} \
+        CURRENT_SEMANTIC_VERSION=${BUILD_VERSION} \
         CURRENT_COMMIT_HASH=${HASH} \
+        PROJ_VERSION=${PROJ_VERSION} \
         ONLY_ACTIVE_ARCH=NO \
-        ${CI_XCCONFIG} \
+        ${XCCONFIG} \
         -derivedDataPath ${DERIVED_DATA} \
         -workspace ./platform/ios/ios.xcworkspace \
         -scheme ${SCHEME} \
@@ -272,4 +287,10 @@ cp ${README} "${OUTPUT}"
 if [ ${BUILD_DOCS} == true ]; then
     step "Generating API documentation for ${BUILDTYPE} Build…"
     make idocument OUTPUT="${OUTPUT}/documentation"
+fi
+
+if [ ${MAKE_ZIP} == true ]; then
+    ZIP_FILE=mapbox-ios-sdk-${BUILD_VERSION}-${FORMAT}.zip
+    step "Generating ZIP file for distribution via Carthage & CocoaPods:  ${ZIP_FILE}"
+    zip -r build/${ZIP_FILE} build/ios/pkg
 fi
