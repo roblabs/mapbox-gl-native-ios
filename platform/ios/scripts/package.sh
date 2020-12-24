@@ -76,9 +76,9 @@ echo -n ${REMOTE_ORIGIN_COMMIT_PATH} > ${VERSION}
 
 PROJ_VERSION=$(git rev-list --count HEAD)
 TAG_VERSION=$(git describe --tags --match=ios-v*.*.* --abbrev=0)
-SEM_VERSION=$( echo ${TAG_VERSION} | sed 's/^ios-v//' )
+SEM_VERSION=$( echo ${TAG_VERSION} | sed 's/^ios-v//' | sed 's/\.[^./]*$//')
 SHORT_VERSION=${SEM_VERSION%-*}
-BUILD_VERSION=${SEM_VERSION}$PROJ_VERSION
+BUILD_VERSION=${SEM_VERSION}.$PROJ_VERSION
 
 step "Building targets (SemVer ${BUILD_VERSION}, build ${PROJ_VERSION}, tag ${TAG_VERSION})"
 
