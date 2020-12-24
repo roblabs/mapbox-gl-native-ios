@@ -205,6 +205,12 @@ commands:
         name: Build ios-test
         command: make ios-test
         no_output_timeout: 20m
+  build-ios-framework:
+    steps:
+    - run:
+        name: make iframework
+        command: make iframework FORMAT=dynamic BUILD_DEVICE=true BUILD_DOCS=false
+        no_output_timeout: 20m
   build-ios-integration-test:
     steps:
     - run:
@@ -328,6 +334,7 @@ jobs:
           command: make ios-lint
       - check-if-this-job-can-be-skipped
       - build-ios-test
+      - build-ios-framework
       - save-dependencies
       - collect-xcode-build-logs
       - upload-xcode-build-logs
